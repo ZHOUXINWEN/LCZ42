@@ -264,9 +264,9 @@ class SENet(nn.Module):
                                     bias=False)),
                 ('bn2', nn.BatchNorm2d(64)),
                 ('relu2', nn.ReLU(inplace=True)),
-                ('conv3', nn.Conv2d(64, inplanes, 3, stride=1, padding=1,
+                ('conv3', nn.Conv2d(64, 64, 3, stride=1, padding=1,
                                     bias=False)),
-                ('bn3', nn.BatchNorm2d(inplanes)),
+                ('bn3', nn.BatchNorm2d(64)),
                 ('relu3', nn.ReLU(inplace=True)),
             ]
             layer0_modules_sen2 = [
@@ -278,14 +278,14 @@ class SENet(nn.Module):
                                     bias=False)),
                 ('bn2', nn.BatchNorm2d(64)),
                 ('relu2', nn.ReLU(inplace=True)),
-                ('conv3', nn.Conv2d(64, inplanes, 3, stride=1, padding=1,
+                ('conv3', nn.Conv2d(64, 64, 3, stride=1, padding=1,
                                     bias=False)),
-                ('bn3', nn.BatchNorm2d(inplanes)),
+                ('bn3', nn.BatchNorm2d(64)),
                 ('relu3', nn.ReLU(inplace=True)),
             ]
         else:
             layer0_modules = [
-                ('conv1', nn.Conv2d(18, inplanes, kernel_size=7, stride=2,
+                ('conv1', nn.Conv2d(18, 64, kernel_size=7, stride=2,
                                     padding=3, bias=False)),
                 ('bn1', nn.BatchNorm2d(inplanes)),
                 ('relu1', nn.ReLU(inplace=True)),
@@ -319,7 +319,7 @@ class SENet(nn.Module):
         )
         self.layer3 = self._make_layer(
             block,
-            planes=256*2,
+            planes=256,
             blocks=layers[2],
             stride=2,
             groups=groups,
@@ -329,7 +329,7 @@ class SENet(nn.Module):
         )
         self.layer4 = self._make_layer(
             block,
-            planes=512*2,
+            planes=512,
             blocks=layers[3],
             stride=2,
             groups=groups,
@@ -338,10 +338,10 @@ class SENet(nn.Module):
             downsample_padding=downsample_padding
         )
         self.avg_pool = nn.AvgPool2d(4, stride=1)
-        self.dropout = nn.Dropout(dropout_p) if dropout_p is not None else None
+        self.dropout1 = nn.Dropout(dropout_p) if dropout_p is not None else None
         self.dropout2 = nn.Dropout(dropout_p)
         #self.last_linear = nn.Linear(512 * block.expansion, num_classes)
-        self.last2_linear = nn.Linear(5120, 512)
+        self.last1_linear = nn.Linear(1024, 512)
         self.last2_linear = nn.Linear(512, num_classes)
     def _make_layer(self, block, planes, blocks, groups, reduction, stride=1,
                     downsample_kernel_size=1, downsample_padding=0):
@@ -367,9 +367,9 @@ class SENet(nn.Module):
         x_sen1 = self.layer0_sen1(x_sen1)
         x_sen2 = self.layer0_sen2(x_sen2)
         #x = x_sen1 + x_sen2
-        print(x_sen1.size(), x_sen2.size())
+        #print(x_sen1.size(), x_sen2.size())
         x = torch.cat((x_sen1, x_sen2), 1)
-        print(x.size())
+        #print(x.size())
         x = self.layer1(x)
         x = self.layer2(x)
         #x = self.layer3(x)
@@ -378,12 +378,13 @@ class SENet(nn.Module):
 
     def logits(self, x):
         x = self.avg_pool(x)
-        if self.dropout is not None:
-            x = self.dropout(x)
+        x = self.dropout1(x)
         x = x.view(x.size(0), -1)
+        #print(x.size())
+        x = self.last1_linear(x)
+        x = self.dropout2(x)
+
         x = self.last2_linear(x)
-        x = x.dropout2(x)
-        x = self.last_linear(x)
         return x
 
     def forward(self, x_sen1, x_sen2):
@@ -415,7 +416,7 @@ def senet154(num_classes=1000, pretrained='imagenet'):
 
 def se_resnet50_shallow_sia(num_classes=1000, pretrained='imagenet'):
     model = SENet(SEResNetBottleneck, [3, 4, 6, 3], groups=1, reduction=16,
-                  dropout_p= 0.5, inplanes=64, input_3x3=True,
+                  dropout_p= 0.5, inplanes=128, input_3x3=True,
                   downsample_kernel_size=1, downsample_padding=0,
                   num_classes=num_classes)
     if pretrained is not None:
