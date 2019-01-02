@@ -192,3 +192,95 @@ class DenseNet(nn.Module):
 
         return x
 
+class DenseNetSia(nn.Module):
+
+    def __init__(self, depth=10, block=Bottleneck, 
+        dropRate=0, num_classes=10, growthRate=64, compressionRate=2):
+        super(DenseNetSia, self).__init__()
+
+        assert (depth - 4) % 3 == 0, 'depth should be 3n+4'
+        n = (depth - 4) / 3 if block == BasicBlock else (depth - 4) // 6
+
+        self.growthRate = growthRate
+        self.dropRate = dropRate
+
+        # self.inplanes is a global variable used across multiple
+        # helper functions
+        '''
+        -------------------------------------------------------------------------------
+        initialize subnetwork for sen1 input
+        -------------------------------------------------------------------------------
+        '''
+        self.inplanes_sen1 = growthRate * 2                 # here self.inplanes is 24
+        self.conv1_sen1 = nn.Conv2d(8, 64, kernel_size=3, padding=1,
+                               bias=False)
+        self.conv1_sen2 = nn.Conv2d(10, 64, kernel_size=3, padding=1,
+                               bias=False)
+        self.dense1_sen1 = self._make_denseblock(block, n, mode = 'sen1')
+
+        self.trans1_sen1 = self._make_transition(compressionRate, mode = 'sen1')
+
+        self.dense2_sen1 = self._make_denseblock(block, n, mode = 'sen1')
+
+        self.trans2_sen1 = self._make_transition(compressionRate, mode = 'sen1')
+
+        self.dense3_sen1 = self._make_denseblock(block, n, mode = 'sen1')
+
+
+        #self.bn_sen1 = nn.BatchNorm2d(self.inplanes_sen1)
+        self.bn_sen1 = nn.GroupNorm(8, self.inplanes_sen1)
+        self.relu_sen1 = nn.ReLU(inplace=True)
+
+        self.avgpool = nn.AvgPool2d(8)
+        #print(self.inplanes_sen1, self.inplanes_sen2)
+        self.fc = nn.Linear(self.inplanes_sen1, num_classes)
+        '''
+        # Weight initialization
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+        '''
+    def _make_denseblock(self, block, blocks, mode):
+        layers = []
+        for i in range(blocks):
+            # Currently we fix the expansion ratio as the default value
+            if mode == 'sen1' :
+                layers.append(block(self.inplanes_sen1, growthRate=self.growthRate, dropRate=self.dropRate))
+                self.inplanes_sen1 += self.growthRate
+            else :
+                layers.append(block(self.inplanes_sen2, growthRate=self.growthRate, dropRate=self.dropRate))
+                self.inplanes_sen2 += self.growthRate
+        return nn.Sequential(*layers)
+
+    def _make_transition(self, compressionRate, mode):
+        if mode == 'sen1' :
+            inplanes = self.inplanes_sen1
+            outplanes = int(math.floor(self.inplanes_sen1 // compressionRate))
+            self.inplanes_sen1 = outplanes
+        else :
+            inplanes = self.inplanes_sen2
+            outplanes = int(math.floor(self.inplanes_sen2 // compressionRate))
+            self.inplanes_sen2 = outplanes
+        return Transition(inplanes, outplanes)
+
+
+    def forward(self, x_sen1, x_sen2):
+        x_sen1 = self.conv1_sen1(x_sen1)
+        x_sen2 = self.conv1_sen2(x_sen2)
+        x = torch.cat((x_sen1, x_sen2), 1)
+
+        x = self.trans1_sen1(self.dense1_sen1(x)) 
+        x = self.trans2_sen1(self.dense2_sen1(x)) 
+        x = self.dense3_sen1(x)
+        x = self.bn_sen1(x)
+        x = self.relu_sen1(x)
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+
+        return x

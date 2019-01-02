@@ -520,7 +520,7 @@ class ReductionCell1(nn.Module):
 class NASNetAMobile(nn.Module):
     """NASNetAMobile (4 @ 1056) """
 
-    def __init__(self, num_classes=1001, stem_filters=32, penultimate_filters=1056, filters_multiplier=2):
+    def __init__(self, num_classes=1001, stem_filters = 128, penultimate_filters=1056, filters_multiplier=2):
         super(NASNetAMobile, self).__init__()
         self.num_classes = num_classes
         self.stem_filters = stem_filters
@@ -530,10 +530,15 @@ class NASNetAMobile(nn.Module):
         filters = self.penultimate_filters // 24
         # 24 is default value for the architecture
 
-        self.conv0 = nn.Sequential()
-        self.conv0.add_module('conv', nn.Conv2d(in_channels=10, out_channels=self.stem_filters, kernel_size=3, padding=0, stride=2,
+        self.conv0_sen1 = nn.Sequential()
+        self.conv0_sen1.add_module('conv', nn.Conv2d(in_channels=8, out_channels= 64 , kernel_size=3, padding=0, stride=2,
                                                 bias=False))
-        self.conv0.add_module('bn', nn.BatchNorm2d(self.stem_filters, eps=0.001, momentum=0.1, affine=True))
+        self.conv0_sen1.add_module('bn', nn.BatchNorm2d(64, eps=0.001, momentum=0.1, affine=True))
+
+        self.conv0_sen2 = nn.Sequential()
+        self.conv0_sen2.add_module('conv', nn.Conv2d(in_channels=10, out_channels= 64 , kernel_size=3, padding=0, stride=2,
+                                                bias=False))
+        self.conv0_sen2.add_module('bn', nn.BatchNorm2d(64, eps=0.001, momentum=0.1, affine=True))
 
         self.cell_stem_0 = CellStem0(self.stem_filters, num_filters=filters // (filters_multiplier ** 2))
         self.cell_stem_1 = CellStem1(self.stem_filters, num_filters=filters // filters_multiplier)
@@ -576,8 +581,10 @@ class NASNetAMobile(nn.Module):
         self.dropout = nn.Dropout()
         self.last_linear = nn.Linear(24*filters, self.num_classes)
 
-    def features(self, input):
-        x_conv0 = self.conv0(input)
+    def features(self, x_sen1, x_sen2):
+        x_sen1 = self.conv0_sen1(x_sen1)
+        x_sen2 = self.conv0_sen2(x_sen2)
+        x_conv0 = torch.cat((x_sen1, x_sen2), 1)
         x_stem_0 = self.cell_stem_0(x_conv0)
         x_stem_1 = self.cell_stem_1(x_conv0, x_stem_0)
 
@@ -609,8 +616,8 @@ class NASNetAMobile(nn.Module):
         x = self.last_linear(x)
         return x
 
-    def forward(self, input):
-        x = self.features(input)
+    def forward(self, x_sen1, x_sen2):
+        x = self.features(x_sen1, x_sen2)
         x = self.logits(x)
         return x
 
