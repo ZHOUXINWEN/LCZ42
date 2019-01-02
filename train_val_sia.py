@@ -19,17 +19,8 @@ from loss.SmoothingLoss import SmoothingLoss
 from loss.focalloss import FocalLoss
 from torch.autograd import Variable
 from basenet.NetworkFactory import NetworkFactory
-'''
-from basenet.pnasnet import pnasnet5large
-from basenet.densenet import DenseNet, DenseNetSia
-from basenet.nasnet_mobile import nasnetamobile
-from basenet.senet_shallow import se_resnet50_shallow
-from basenet.resnext import CifarResNeXt, ShallowResNeXt
-from basenet.senet_shallow_sia import se_resnet50_shallow_sia
-from basenet.senet import se_resnext101_32x4d,se_resnet101,se_resnet50
-from basenet.SimpleNet import SimpleNet, SimpleNetLeaky, SimpleNet4x4,SimpleNetSen2, SimpleNetGN
-'''
 from H5Dataset import H5Dataset, H5DatasetSia, H5DatasetSoftAnno, H5DatasetSiaResample
+
 import argparse
 
 parser = argparse.ArgumentParser(description = 'Tiangong')
@@ -101,7 +92,6 @@ def main():
     torch.cuda.set_device(0)
 
     model = NetworkFactory.ConsturctNetwork(args.basenet, args.resume).cuda()
-
     model = model.cuda()
     cudnn.benchmark = True
 
