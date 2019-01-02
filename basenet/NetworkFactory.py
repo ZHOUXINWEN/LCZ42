@@ -7,7 +7,7 @@ from densenet import DenseNet, DenseNetSia
 from nasnet_mobile import nasnetamobile
 from senet_shallow import se_resnet50_shallow
 from resnext import CifarResNeXt, ShallowResNeXt
-from senet_shallow_sia import se_resnet50_shallow_sia
+from senet_shallow_sia import se_resnet50_shallow_sia, se_resnext50_32x4d
 from SimpleNet import SimpleNet, SimpleNetLeaky, SimpleNet4x4,SimpleNetSen2, SimpleNetGN
 from shake_shake import Shake_Shake
 
@@ -31,19 +31,21 @@ class NetworkFactory:
             model = ShallowResNeXt(num_classes = 17, depth = 11, cardinality = 16)    
 
         elif NetworkType == 'se_resnet50_shallow_sia' :
-            model = se_resnet50_shallow_sia(args.class_num, None)    
+            model = se_resnet50_shallow_sia(17, None)    
 
+        elif NetworkType == 'se_resnext50_32x4d' :
+            model = se_resnet50_shallow_sia(17, None)
         elif NetworkType == 'SimpleNet':
-            model = SimpleNet(args.class_num)    
+            model = SimpleNet(17)    
 
         elif NetworkType == 'SimpleNetGN':
-            model = SimpleNetGN(args.class_num)    
+            model = SimpleNetGN(17)    
 
         elif NetworkType == 'DenseNet':
-            model = DenseNet(num_classes = args.class_num)    
+            model = DenseNet(num_classes = 17)    
 
         elif NetworkType == 'DenseNetSia':
-            model = DenseNetSia(num_classes = args.class_num)    
+            model = DenseNetSia(num_classes = 17)    
 
         elif NetworkType == 'nasnetamobile':
             model = nasnetamobile(num_classes = 17, pretrained = None)
