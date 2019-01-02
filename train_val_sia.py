@@ -16,16 +16,20 @@ from sklearn.metrics import confusion_matrix
 import torch.nn.init as init
 from loss.DistillationLoss import DistillationLoss
 from loss.SmoothingLoss import SmoothingLoss
-
+from loss.focalloss import FocalLoss
 from torch.autograd import Variable
+from basenet.NetworkFactory import NetworkFactory
+'''
 from basenet.pnasnet import pnasnet5large
-from basenet.densenet import DenseNet
+from basenet.densenet import DenseNet, DenseNetSia
+from basenet.nasnet_mobile import nasnetamobile
 from basenet.senet_shallow import se_resnet50_shallow
 from basenet.resnext import CifarResNeXt, ShallowResNeXt
 from basenet.senet_shallow_sia import se_resnet50_shallow_sia
 from basenet.senet import se_resnext101_32x4d,se_resnet101,se_resnet50
-from H5Dataset import H5Dataset, H5DatasetCat, H5DatasetSia, H5DatasetSoftAnno, H5DatasetSiaResample
 from basenet.SimpleNet import SimpleNet, SimpleNetLeaky, SimpleNet4x4,SimpleNetSen2, SimpleNetGN
+'''
+from H5Dataset import H5Dataset, H5DatasetSia, H5DatasetSoftAnno, H5DatasetSiaResample
 import argparse
 
 parser = argparse.ArgumentParser(description = 'Tiangong')
@@ -52,7 +56,7 @@ parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
 parser.add_argument('--epochs', default=250, type=int, metavar='N',
                     help='number of total epochs to run')
 
-args = parser.parse_args()
+args = parser.parse_args()       #global variable
 
 def main():
     #create model
@@ -95,115 +99,34 @@ def main():
     '''
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
     torch.cuda.set_device(0)
-    if args.basenet == 'ResNeXt':
-        model = CifarResNeXt(num_classes = 17, depth = 29, cardinality = 8)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-    if args.basenet == 'ShallowResNeXt':
-        model = ShallowResNeXt(num_classes = 17, depth = 11, cardinality = 16)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-        if args.resume:
-            model.load_state_dict(torch.load(args.resume))
-    elif args.basenet == 'pnasnet':
-        model = pnasnet5large(args.class_num, None)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-        if args.resume:
-            model.load_state_dict(torch.load(args.resume))
-        else:
-            state_dict = torch.load('pnasnet5large-bf079911.pth')
-            state_dict.pop('last_linear.bias')
-            state_dict.pop('last_linear.weight')
-            model.load_state_dict(state_dict, strict = False)
-            init.xavier_uniform_(model.last_linear.weight.data)
-            model.last_linear.bias.data.zero_()
 
-    elif args.basenet == 'se_resnet50_shallow':
-        model = se_resnet50_shallow(args.class_num, None)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-
-    elif args.basenet == 'se_resnet50_shallow_sia':
-        model = se_resnet50_shallow_sia(args.class_num, None)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-
-    elif args.basenet == 'SimpleNet':
-        model = SimpleNet(args.class_num)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-        if args.resume:
-            model.load_state_dict(torch.load(args.resume))
-    elif args.basenet == 'SimpleNetGN':
-        model = SimpleNetGN(args.class_num)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-        if args.resume:
-            model.load_state_dict(torch.load(args.resume))
-    elif args.basenet == 'DenseNet':
-        model = DenseNet(num_classes = args.class_num)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-
-    elif args.basenet == 'SimpleNetLeaky':
-        model = SimpleNetLeaky(args.class_num)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-    elif args.basenet == 'SimpleNet4x4':
-        model = SimpleNet4x4(args.class_num)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-    elif args.basenet == 'se_resnext101_32x4d':
-        model = se_resnext101_32x4d(args.class_num, None)    
-        #net = Networktorch.nn.DataParallel(Network, device_ids=[0])
-        cudnn.benchmark = True
-        if args.resume:
-            model.load_state_dict(torch.load(args.resume))
-        else:
-            state_dict = torch.load('se_resnext101_32x4d-3b2fe3d8.pth')
-            state_dict.pop('last_linear.bias')
-            state_dict.pop('last_linear.weight')
-            model.load_state_dict(state_dict, strict = False)
-            init.xavier_uniform_(model.last_linear.weight.data)
-            model.last_linear.bias.data.zero_()
+    model = NetworkFactory.ConsturctNetwork(args.basenet, args.resume).cuda()
 
     model = model.cuda()
     cudnn.benchmark = True
 
     #weights = torch.FloatTensor(weights)
     if args.MultiLabel == None :
-        criterion = nn.CrossEntropyLoss().cuda()#criterion = DistillationLoss() 
+        #criterion = nn.CrossEntropyLoss().cuda()#criterion = DistillationLoss()
+         criterion = FocalLoss(gamma = 2, alpha = 0.25) 
     else :
         criterion = nn.MultiLabelMarginLoss().cuda()
 
     Optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr = args.lr, momentum = args.momentum,
                           weight_decay = args.weight_decay, nesterov = True)
     #torch.save(model.state_dict(), 'weights/bs32_8cat10channel_NonNeste_'+ args.basenet +'/'+ 'LCZ42_SGD' + '.pth')
-    prefix = 'weights/CEL_WarmUp_TrainALlValAllBallance_bs32_8cat10channel_deacysqrt04_'
-    decay = math.sqrt(0.4)
+    prefix = 'weights/FL_WarmUp_Cosine_AllBalanced_bs32_8cat10channel_'
+
     for epoch in range(args.start_epoch, args.epochs):
-
+        
         if epoch > 1 :
-            adjust_learning_rate(Optimizer, epoch - 1, decay)
-
+            adjust_learning_rate(Optimizer, epoch, mode = 'Cosine', decay = math.sqrt(0.5))
+        
         # train for one epoch
         if(epoch % 2 == 0) :
-            train(Dataloader_train, model, criterion, Optimizer, epoch, Dataloader_validation, args.AddNoise)    #train(Dataloader_train, Network, criterion, Optimizer, epoch)
+            train(Dataloader_train, model, criterion, Optimizer, epoch, Dataloader_validation, args.AddNoise)   
         else:
             train(Dataloader_validation_fortrain, model, criterion, Optimizer, epoch, Dataloader_validation, args.AddNoise)
-
-        #weights = Return_Confmatrix(model, epoch, Dataloader_validation)
-        # evaluate on validation set
-        #prec1 = validate(Dataloader_val, model, criterion)  #prec1 = validate(Dataloader_val, Network, criterion)
-
-        # remember best prec@1 and save checkpoint
-        #is_best = prec1 > best_prec1
-        #best_prec1 = max(prec1, best_prec1)
-        #if is_best:
-        #if epoch%1 == 0:
-            #torch.save(model.state_dict(), 'weights/10cat8channel_'+ args.basenet +'/'+ 'LCZ42_SGD_' + repr(epoch) + '.pth')
-
         
 
 def train(Dataloader,model, criterion, optimizer, epoch, Dataloader_validation, AddNoise):
@@ -244,7 +167,7 @@ def train(Dataloader,model, criterion, optimizer, epoch, Dataloader_validation, 
             input2_var = Variable(input2.cuda())
             target_var = Variable(target.cuda())
 
-            if epoch > 3 and np.random.rand() > 0.5:
+            if epoch < 6 and np.random.rand() > 0.5:
                 input1_var = gaussian(input1_var, 0, 0.01)
                 input2_var = gaussian(input2_var, 0, 0.01)
                 input1_var, input2_var = multiplicative_denoising(input1_var, input2_var)
@@ -271,7 +194,7 @@ def train(Dataloader,model, criterion, optimizer, epoch, Dataloader_validation, 
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if (i+1) % freq == 0:
+        if (i+1) % 1 == 0:
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
@@ -280,6 +203,11 @@ def train(Dataloader,model, criterion, optimizer, epoch, Dataloader_validation, 
                   'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
                 epoch, i+1, len(Dataloader), batch_time=batch_time,
                 data_time=data_time, loss=losses, top1=top1, top5=top5))
+            batch_time.reset()
+            data_time.reset()
+            losses.reset()
+            top1.reset()
+            top5.reset()
             if epoch == 0:
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = args.lr*(float(i + 1 + freq)/26220)
@@ -287,7 +215,9 @@ def train(Dataloader,model, criterion, optimizer, epoch, Dataloader_validation, 
   
         if (i+1) % freq == 0:
             #Return_Confmatrix(model, epoch, Dataloader_validation, itera = i)
-            torch.save(model.state_dict(), 'weights/CEL_WarmUp_TrainALlValAllBallance_bs32_8cat10channel_deacysqrt04_' + args.basenet +'/'+ 'LCZ42_SGD_' + repr(epoch)+ '_' + repr(i) + '.pth')
+            if not os.path.exists('weights/FL_WarmUp_Cosine_AllBalanced_bs32_8cat10channel_' + args.basenet ):
+                os.mkdir('weights/FL_WarmUp_Cosine_AllBalanced_bs32_8cat10channel_' + args.basenet)
+            torch.save(model.state_dict(), 'weights/FL_WarmUp_Cosine_AllBalanced_bs32_8cat10channel_' + args.basenet +'/'+ 'LCZ42_SGD_' + repr(epoch)+ '_' + repr(i) + '.pth')
             model.train()
             '''
             if (i+1)%(freq*4) == 0:
@@ -295,50 +225,6 @@ def train(Dataloader,model, criterion, optimizer, epoch, Dataloader_validation, 
                     param_group['lr'] = param_group['lr']*math.sqrt(0.5)
                     print(param_group['lr'])
             '''
-def validate(val_loader,model, criterion):
-    batch_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
-
-    # switch to evaluate mode
-    model.eval()
-
-    end = time.time()
-    for i, (input, target) in enumerate(val_loader):
-        target = target.cuda()
-        input = input.cuda()
-        with torch.no_grad():
-            input_var = Variable(input.cuda())
-            target_var = Variable(target.cuda())
-
-        # compute output
-        output = model(input_var)
-        loss = criterion(output, target_var)
-
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if (i+1) % 50 == 0:
-            print('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   i+1, len(val_loader), batch_time=batch_time, loss=losses,
-                   top1=top1, top5=top5))
-
-    print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
-          .format(top1=top1, top5=top5))
-
-    return top1.avg, top5.avg
 
 def Return_Confmatrix(net, epoch, Dataloader, itera):
     """
@@ -361,53 +247,11 @@ def Return_Confmatrix(net, epoch, Dataloader, itera):
         results.append(pred.item())
         results_anno.append(Anno)
     cnf_matrix = confusion_matrix(results_anno, results)
-    np.save('weights/CEL_WarmUp_TrainALlValAllBallance_bs32_8cat10channel_deacysqrt04_' + args.basenet +'/'+ 'LCZ42_SGD_' + repr(epoch) + '_' + repr(itera) + '.npy', cnf_matrix)
+    np.save('weights/FL_WarmUp_Cosine_AllBalanced_bs32_8cat10channel_' + args.basenet +'/'+ 'LCZ42_SGD_' + repr(epoch) + '_' + repr(itera) + '.npy', cnf_matrix)
     cnf_tr = np.trace(cnf_matrix)
     cnf_tr = cnf_tr.astype('float')
     print("The accuracy in Validation set of " + repr(epoch)  + '_' + repr(itera) + " epoch : " + repr(cnf_tr/len(Dataloader))+"%")
 
-    '''
-    cnf_matrix = cnf_matrix.astype('float') / cnf_matrix.sum(axis=1)[:, np.newaxis]           # normalise confusion matrix
-    cnfmat_tensor = torch.from_numpy(cnf_matrix).float()                                      # transform from numpy array to pytorch tensor
-    weights = 1/torch.diag(cnfmat_tensor)                                                     # abstract recall from conf mat and reverse them.
-    return weights 
-    '''
-def Return_Confmatrix_ACC(net, epoch, Dataloader, itera, prif):
-    """
-    input: neural network, epoch number
-    output: reverse of diagram of confusion matrix to serve as the weight of loss.
-    
-    fid = h5py.File('data/validation.h5')
-    Dataset = fid['sen2']
-    """
-    net.eval()
-
-    results = []
-    results_anno = []
-
-    for i, (Input_sen1, Input_sen2, Anno) in enumerate(Dataloader):
-        Input_sen1 = Input_sen1.cuda()
-        Input_sen2 = Input_sen2.cuda()
-        preds = net.forward(Input_sen1, Input_sen2)
-        _, pred = preds.data.topk(1, 1, True, True)
-        #append prediction results
-        results = results + torch.squeeze(pred).tolist()
-        #append annotation results
-        #if MultiLabel != None:
-        #Anno = torch.nonzero(label0Tensor[0, 0:17]).item()
-        results_anno = results_anno + Anno.tolist()
-    cnf_matrix = confusion_matrix(results_anno, results)
-    np.save(prif + args.basenet +'/'+ 'LCZ42_SGD_' + repr(epoch) + '_' + repr(itera) + '.npy', cnf_matrix)
-    cnf_tr = np.trace(cnf_matrix)
-    cnf_tr = cnf_tr.astype('float')
-    print("The accuracy in Validation set of " + repr(epoch)  + '_' + repr(itera) + " epoch : " + repr(cnf_tr/len(Dataloader))+"%")
-
-    '''
-    cnf_matrix = cnf_matrix.astype('float') / cnf_matrix.sum(axis=1)[:, np.newaxis]           # normalise confusion matrix
-    cnfmat_tensor = torch.from_numpy(cnf_matrix).float()                                      # transform from numpy array to pytorch tensor
-    weights = 1/torch.diag(cnfmat_tensor)                                                     # abstract recall from conf mat and reverse them.
-    return weights 
-    '''
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
@@ -426,12 +270,22 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-def adjust_learning_rate(optimizer, epoch, decay):
+def adjust_learning_rate(optimizer, epoch, mode, decay = 0.5):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    
-    lr = args.lr * (decay ** (epoch // 1)) # former 0.95 per epoch
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+    if mode == 'Exponential' : 
+        lr = args.lr * (decay ** (epoch // 1)) # former 0.95 per epoch
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+
+    elif mode == 'Cosine' :
+        lr = args.lr * (0.5 * (1 + math.cos( (epoch - 1) * math.pi / 20 ))) # former 0.95 per epoch
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+
+    elif mode == 'Linear' :
+        lr = args.lr * (float(epoch+1)/5) # former 0.95 per epoch
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
 
 def adjust_learning_rate_Cosine(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
